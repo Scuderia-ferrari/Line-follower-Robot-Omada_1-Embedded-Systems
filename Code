@@ -1,0 +1,111 @@
+import machine
+import time
+
+#Δήλωση αισθητήρων
+cal_pin = machine.Pin(27, machine.Pin.IN)
+lpin = machine.Pin(2, machine.Pin.IN)
+llpin = machine.Pin(17, machine.Pin.IN)
+mpin = machine.Pin(3, machine.Pin.IN)
+rpin = machine.Pin(5, machine.Pin.IN)
+rrpin = machine.Pin(16, machine.Pin.IN)
+
+#Δήλωση κινητήρων
+motor_right_forward = machine.PWM(machine.Pin(8), freq=1000) 
+motor_right_backward = machine.PWM(machine.Pin(9), freq=1000) 
+motor_left_forward = machine.PWM(machine.Pin(10), freq=1000) 
+motor_left_backward = machine.PWM(machine.Pin(11), freq=1000) 
+
+#Βασικές ταχύτητες
+base_speed = 40000
+max_speed = 65535
+
+#Παράμετροι PID
+Kp = 1.0
+Ki = 0.0
+Kd = 0.1
+last_error = 0
+integral = 0
+
+#Συνάρτηση για κίνηση με PID έλεγχο
+def move(pid_correction): 
+    right_speed = base_speed - pid_correction
+    left_speed = base_speed + pid_correction
+    
+    #Όρια ταχύτητας
+    if right_speed > max_speed:
+        right_speed = max_speed
+    elif right_speed < 0:
+        right_speed = 0
+    
+    if left_speed > max_speed:
+        left_speed = max_speed
+    elif left_speed < 0:
+        left_speed = 0
+    
+    #Κίνηση κινητήρων
+    motor_right_forward.duty_u16(int(right_speed))
+    motor_right_backward.duty_u16(0)
+    motor_left_forward.duty_u16(int(left_speed))
+    motor_left_backward.duty_u16(0)
+
+#Συνάρτηση για σταματημό
+def stop(): 
+    motor_right_forward.duty_u16(0)
+    motor_right_backward.duty_u16(0)
+    motor_left_forward.duty_u16(0)
+    motor_left_backward.duty_u16(0)
+
+#Συνάρτηση για αριστερή στροφή
+def turn_l():
+    motor_right_forward.duty_u16(base_speed)
+    motor_right_backward.duty_u16(0)
+    motor_left_forward.duty_u16(0)
+    motor_left_backward.duty_u16(base_speed)
+
+#Συνάρτηση για δεξιά στροφή
+def turn_r():
+    motor_right_forward.duty_u16(0)
+    motor_right_backward.duty_u16(base_speed)
+    motor_left_forward.duty_u16(base_speed)
+    motor_left_backward.duty_u16(0)
+
+#Κύρια λούπα ελέγχου του ρομπότ
+while True:
+    rsensor_value = rpin.value()  
+    msensor_value = mpin.value()  
+    lsensor_value = lpin.value()  
+    rrsensor_value = rrpin.value()
+    llsensor_value = llpin.value()
+
+    #Υπολογισμός σφάλματος
+    error = (llsensor_value * -2) + (lsensor_value * -1) + (msensor_value * 0) + (rsensor_value * 1) + (rrsensor_value * 2)
+    
+    #Υπολογισμός του PID
+    integral += error
+    derivative = error - last_error
+    pid_correction = Kp * error + Ki * integral + Kd * derivative
+    last_error = error
+    
+    #Προσαρμοστική παραμετροποίηση PID
+    if abs(error) > 1:
+        Kp = 1.5
+        Kd = 0.2
+    else:
+        Kp = 1.0
+        Kd = 0.1
+
+    #Έλεγχος των αισθητήρων και κίνηση
+    if (msensor_value == 0 and rsensor_value == 0 and lsensor_value == 0 and rrsensor_value == 0 and llsensor_value == 0):
+        stop()
+    else:
+        move(pid_correction)
+
+    if (llsensor_value == 1 and lsensor_value == 0 and msensor_value == 0 and rsensor_value == 0 and rrsensor_value == 0):
+        turn_l()
+        time.sleep(0.05)
+    elif (rrsensor_value == 1 and rsensor_value == 0 and msensor_value == 0 and lsensor_value == 0 and llsensor_value == 0):
+        turn_r()
+        time.sleep(0.05)
+    
+    time.sleep(0.01)
+
